@@ -7,7 +7,6 @@ import networkx as nx
 import pickle
 from shapely.geometry import Point
 from shapely.geometry import LineString
-import matplotlib.pyplot as plt
 
 import geopy.distance
 import osmnx as ox
@@ -417,21 +416,51 @@ def plot_graph(G,_dpi):
             node_sizes.append(30)
             node_colors.append('brown')
     
-    # Visualize the graph
-    plt.figure(figsize=(60, 40))
-    nx.draw_networkx_nodes(G, node_positions, node_color=node_colors, node_size=node_sizes, alpha=0.8)
-    nx.draw_networkx_edges(G, node_positions, width=1.0, alpha=0.5, edge_color='black', style='solid')
-    
-    # Set axis properties
-    plt.xticks([])
-    plt.yticks([])
-    plt.axis('on')
-    
-    plt.title('DHN Graph',fontsize=30)
-    # plt.legend()
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        return
+
+    edge_x = []
+    edge_y = []
+    for u, v in G.edges:
+        x0, y0 = node_positions[u]
+        x1, y1 = node_positions[v]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+
+    edge_trace = go.Scatter(
+        x=edge_x,
+        y=edge_y,
+        mode="lines",
+        line={"width": 1, "color": "#555"},
+        hoverinfo="none",
+        name="Réseau",
+    )
+
+    node_trace = go.Scatter(
+        x=[node_positions[node][0] for node in G.nodes],
+        y=[node_positions[node][1] for node in G.nodes],
+        mode="markers",
+        marker={
+            "size": node_sizes,
+            "color": node_colors,
+            "line": {"width": 0.5, "color": "black"},
+        },
+        text=[G.nodes[node]["node_type"] for node in G.nodes],
+        hoverinfo="text",
+        name="Noeuds",
+    )
+
+    fig = go.Figure(data=[edge_trace, node_trace])
+    fig.update_layout(
+        title="DHN Graph",
+        showlegend=False,
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+    )
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    plt.savefig(RESULTS_DIR / "network_graph.png", dpi=_dpi)
-    plt.close()
+    fig.write_html(RESULTS_DIR / "network_graph.html", include_plotlyjs="cdn")
     
     
     return

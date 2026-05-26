@@ -153,17 +153,34 @@ def main() -> None:
         load_curve.to_csv(RESULTS_DIR / "network_load_curve.csv", index=False)
 
         try:
-            import matplotlib.pyplot as plt
+            import plotly.graph_objects as go
 
-            fig, ax = plt.subplots(figsize=(10, 5))
-            ax.plot(load_curve["time"], load_curve["total_kw"], label="Charge totale", alpha=0.6)
-            ax.plot(load_curve["time"], load_curve["smoothed_kw"], label="Moyenne glissante 8h", linewidth=2)
-            ax.set_ylabel("Puissance (kW)")
-            ax.set_title("Courbe de charge du réseau")
-            ax.legend()
-            fig.tight_layout()
-            fig.savefig(RESULTS_DIR / "network_load_curve.png", dpi=150)
-            plt.close(fig)
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=load_curve["time"],
+                    y=load_curve["total_kw"],
+                    mode="lines",
+                    name="Charge totale",
+                    line={"width": 1},
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=load_curve["time"],
+                    y=load_curve["smoothed_kw"],
+                    mode="lines",
+                    name="Moyenne glissante 8h",
+                    line={"width": 3},
+                )
+            )
+            fig.update_layout(
+                title="Courbe de charge du réseau",
+                yaxis_title="Puissance (kW)",
+                xaxis_title="Heure",
+                hovermode="x unified",
+            )
+            fig.write_html(RESULTS_DIR / "network_load_curve.html", include_plotlyjs="cdn")
         except ImportError:
             pass
 
