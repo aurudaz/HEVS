@@ -1,8 +1,10 @@
 from convert_gdf_to_graph import gdf_streets_to_graph, graph_to_gdfs, graph_to_dfs
 
-import geopandas as gpd 
+from pathlib import Path
+
+import geopandas as gpd
 import networkx as nx
-import pickle 
+import pickle
 from shapely.geometry import Point
 from shapely.geometry import LineString
 import matplotlib.pyplot as plt
@@ -15,6 +17,9 @@ import warnings
 import math
 from shapely import wkt
 warnings.filterwarnings("ignore")
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+RESULTS_DIR = ROOT_DIR / "results" / "lab3"
 
 # =============================================================================
 # DATA READING AND PRE-TREATMENT
@@ -424,8 +429,9 @@ def plot_graph(G,_dpi):
     
     plt.title('DHN Graph',fontsize=30)
     # plt.legend()
-    plt.savefig('../results/network_graph.png',dpi = _dpi)
-    plt.show()
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    plt.savefig(RESULTS_DIR / "network_graph.png", dpi=_dpi)
+    plt.close()
     
     
     return

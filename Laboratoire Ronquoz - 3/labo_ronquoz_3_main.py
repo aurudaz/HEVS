@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import pandas as pd
 import pulp
@@ -13,6 +14,7 @@ RESULTS_DIR = ROOT_DIR / "results" / "lab3"
 BUILDINGS_PATH = ROOT_DIR / "results" / "lab1" / "buildings_energy.geojson"
 RESOURCES_PATH = ROOT_DIR / "Laboratoire Ronquoz - 3" / "resources_ronquoz.geojson"
 STREETS_PATH = ROOT_DIR / "Laboratoire Ronquoz - 3" / "road_network_ronquoz.geojson"
+DISTRICT_PROFILE_PATH = ROOT_DIR / "results" / "lab1" / "district_profile.csv"
 
 CP_KJ_PER_KG_K = 4.18
 DELTA_T = 30
@@ -69,7 +71,7 @@ def build_optimization(df_edges: pd.DataFrame, df_nodes: pd.DataFrame, resources
         model += inflow + resource_supply[node] - outflow == demands[node]
 
     total_cost = pulp.lpSum(
-        (5553 * d_value[edge] + 951.35) * float(df_edges.loc[edge, "length"]) for edge in edges
+        (5553 * d_value[edge] + 951.35) * float(df_edges.at[edge, "length"]) for edge in edges
     )
     model += total_cost
 
@@ -93,12 +95,12 @@ def main() -> None:
     df_nodes = df_nodes.copy()
     df_nodes["maxpowerqhw"] = 0.0
     for node in df_nodes.index:
-        if df_nodes.loc[node, "node_type"] == "building":
+        if df_nodes.at[node, "node_type"] == "building":
             raw_id = str(node).replace("Bat_", "")
-            df_nodes.loc[node, "maxpowerqhw"] = float(building_powers.get(raw_id, 0.0))
+            df_nodes.at[node, "maxpowerqhw"] = float(building_powers.get(raw_id, 0.0))
 
     model, variables = build_optimization(df_edges, df_nodes, resources)
-    model.solve(pulp.PULP_CBC_CMD(msg=False))
+    model.solve(pulp.PULP_CBC_CMD(msg=False, timeLimit=120))
 
     diameters = {}
     for edge, d_var in variables["d_value"].items():
@@ -126,6 +128,60 @@ def main() -> None:
     pd.DataFrame({"resource": list(supply.keys()), "mass_flow_kg_h": list(supply.values())}).to_csv(
         RESULTS_DIR / "resource_supply.csv", index=False
     )
+
+    total_length_m = float(df_edges["length"].sum())
+    total_cost_chf = float(((5553 * gdf_edges["diameter_m"] + 951.35) * gdf_edges["length"]).sum())
+
+    annual_heat_kwh = 0.0
+    peak_kw = 0.0
+    smoothed_peak_kw = 0.0
+    if DISTRICT_PROFILE_PATH.exists():
+        district_profile = pd.read_csv(DISTRICT_PROFILE_PATH, parse_dates=["time"])
+        total_kw = district_profile["total_kw"].astype(float)
+        annual_heat_kwh = float(total_kw.sum())
+        peak_kw = float(total_kw.max())
+        smoothed_kw = total_kw.rolling(window=8, center=True, min_periods=1).mean()
+        smoothed_peak_kw = float(smoothed_kw.max())
+
+        load_curve = pd.DataFrame(
+            {
+                "time": district_profile["time"],
+                "total_kw": total_kw,
+                "smoothed_kw": smoothed_kw,
+            }
+        )
+        load_curve.to_csv(RESULTS_DIR / "network_load_curve.csv", index=False)
+
+        try:
+            import matplotlib.pyplot as plt
+
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(load_curve["time"], load_curve["total_kw"], label="Charge totale", alpha=0.6)
+            ax.plot(load_curve["time"], load_curve["smoothed_kw"], label="Moyenne glissante 8h", linewidth=2)
+            ax.set_ylabel("Puissance (kW)")
+            ax.set_title("Courbe de charge du réseau")
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig(RESULTS_DIR / "network_load_curve.png", dpi=150)
+            plt.close(fig)
+        except ImportError:
+            pass
+
+    annual_heat_mwh = annual_heat_kwh / 1000 if annual_heat_kwh else 0.0
+    energy_density_mwh_per_m = annual_heat_mwh / total_length_m if total_length_m else 0.0
+
+    summary = {
+        "total_length_m": total_length_m,
+        "total_length_km": total_length_m / 1000 if total_length_m else 0.0,
+        "total_cost_chf": total_cost_chf,
+        "annual_heat_kwh": annual_heat_kwh,
+        "annual_heat_mwh": annual_heat_mwh,
+        "energy_density_mwh_per_m_per_year": energy_density_mwh_per_m,
+        "peak_kw": peak_kw,
+        "smoothed_peak_kw": smoothed_peak_kw,
+    }
+    pd.DataFrame([summary]).to_csv(RESULTS_DIR / "network_summary.csv", index=False)
+    (RESULTS_DIR / "network_summary.json").write_text(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":

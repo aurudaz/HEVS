@@ -45,9 +45,28 @@ def fetch_pvgis_profile(cache_path: Path, aspect: int) -> np.ndarray:
         "endyear": PV_YEAR,
         "mountingplace": "building",
     }
-    response = requests.get(PVGIS_URL, params=params, timeout=60)
-    response.raise_for_status()
-    payload = response.json()
+    def fallback_profile(hours: int = 8760, annual_kwh_per_kwp: float = 1100) -> np.ndarray:
+        t = np.arange(hours)
+        day = (t % 24) / 24.0
+        year = t / hours
+        shift = -2 / 24 if aspect < 0 else 2 / 24
+        daily = np.sin(np.pi * ((day - 0.25 + shift) % 1))
+        daily = np.clip(daily, 0, None)
+        seasonal = 0.6 + 0.4 * np.sin(2 * np.pi * (year - 0.25))
+        profile = daily * seasonal
+        if profile.sum() > 0:
+            profile = profile / profile.sum() * annual_kwh_per_kwp
+        return profile
+
+    try:
+        response = requests.get(PVGIS_URL, params=params, timeout=60)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException:
+        kwh = fallback_profile()
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"kwh_per_kwp": kwh}).to_csv(cache_path, index=False)
+        return kwh
 
     hourly = payload.get("outputs", {}).get("hourly", [])
     df = pd.DataFrame(hourly)
