@@ -85,7 +85,7 @@ def compute_df_edges_df_nodes(buildings_file_path, resources_file_path, streets_
     df_edges,df_nodes = graph_to_dfs(G)
     
     
-    return df_edges, df_nodes, buildings, resources, streets
+    return df_edges, df_nodes, buildings, resources, streets, gdf_nodes, gdf_edges
 
 
 def data_import(zone_file_path,buildings_file_path,resources_file_path,init_crs):
