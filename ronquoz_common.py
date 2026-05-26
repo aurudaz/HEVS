@@ -111,7 +111,7 @@ def apply_thermal_inertia(profile: np.ndarray, tau_hours: float) -> np.ndarray:
 
 
 def hourly_index(hours: int) -> pd.DatetimeIndex:
-    return pd.date_range("2023-01-01", periods=hours, freq="H")
+    return pd.date_range("2023-01-01", periods=hours, freq="h")
 
 
 def get_foisonnement(affect: str) -> float:

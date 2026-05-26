@@ -1,0 +1,10 @@
+{
+  "total_length_m": 14770.666631325112,
+  "total_length_km": 14.770666631325112,
+  "total_cost_chf": 16736196.235010203,
+  "annual_heat_kwh": 26147810.345809978,
+  "annual_heat_mwh": 26147.810345809976,
+  "energy_density_mwh_per_m_per_year": 1.7702525551796435,
+  "peak_kw": 9259.082292924551,
+  "smoothed_peak_kw": 8752.07771101387
+}
