@@ -84,6 +84,65 @@ def fetch_pvgis_profile(cache_path: Path, aspect: int) -> np.ndarray:
     return kwh.to_numpy()
 
 
+def add_energy_intensity(buildings: pd.DataFrame) -> pd.DataFrame:
+    buildings = buildings.copy()
+    sre = buildings.get("sre", pd.Series(0, index=buildings.index)).fillna(0).astype(float)
+    default_series = pd.Series(0, index=buildings.index)
+    heat = buildings.get("heat_ecs_annual_kwh", buildings.get("heat_annual_kwh", default_series))
+    heat = heat.fillna(0).astype(float)
+    elec = buildings.get("elec_annual_kwh", pd.Series(0, index=buildings.index)).fillna(0).astype(float)
+    buildings["heat_kwh_per_sre"] = [safe_divide(val, s) for val, s in zip(heat, sre)]
+    buildings["elec_kwh_per_sre"] = [safe_divide(val, s) for val, s in zip(elec, sre)]
+    return buildings
+
+
+def save_geopandas_maps(gdf, output_dir: Path) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return
+
+    output_dir = ensure_dir(output_dir)
+    gdf = gdf.copy()
+    if "heat_ecs_annual_kwh" in gdf.columns:
+        gdf["heat_mwh"] = gdf["heat_ecs_annual_kwh"].astype(float) / 1000
+        heat_column = "heat_mwh"
+    elif "heat_annual_kwh" in gdf.columns:
+        gdf["heat_mwh"] = gdf["heat_annual_kwh"].astype(float) / 1000
+        heat_column = "heat_mwh"
+    else:
+        heat_column = None
+    if "elec_annual_kwh" in gdf.columns:
+        gdf["elec_mwh"] = gdf["elec_annual_kwh"].astype(float) / 1000
+    if "maxpowerqhw" in gdf.columns:
+        gdf["maxpower_kw"] = gdf["maxpowerqhw"].astype(float)
+
+    maps = [
+        (heat_column, "Heat energy (MWh/an)", "map_heat_energy.png", "YlOrRd"),
+        ("elec_mwh", "Electric energy (MWh/an)", "map_electric_energy.png", "YlGnBu"),
+        ("maxpower_kw", "Yearly max power (kW)", "map_yearly_max_power.png", "magma"),
+        ("heat_kwh_per_sre", "Heat energy per SRE (kWh/m²/an)", "map_heat_per_sre.png", "plasma"),
+        ("elec_kwh_per_sre", "Electric energy per SRE (kWh/m²/an)", "map_elec_per_sre.png", "viridis"),
+    ]
+
+    for column, title, filename, cmap in maps:
+        if not column or column not in gdf.columns:
+            continue
+        fig, ax = plt.subplots(figsize=(8, 6))
+        gdf.plot(
+            column=column,
+            ax=ax,
+            legend=True,
+            cmap=cmap,
+            missing_kwds={"color": "lightgrey", "label": "No data"},
+        )
+        ax.set_title(title)
+        ax.set_axis_off()
+        fig.tight_layout()
+        fig.savefig(output_dir / filename, dpi=150)
+        plt.close(fig)
+
+
 def main() -> None:
     base_geojson, buildings = load_geojson(BUILDINGS_GEOJSON)
     lab1_geojson = RESULTS_DIR / "lab1" / "buildings_energy.geojson"
@@ -120,6 +179,13 @@ def main() -> None:
     buildings["elec_annual_kwh"] = elec_annual
     buildings["autoconsumption"] = [safe_divide(sc, pv) for sc, pv in zip(self_annual, pv_annual)]
     buildings["autonomy"] = [safe_divide(sc, load) for sc, load in zip(self_annual, elec_annual)]
+    if "heat_annual_kwh" not in buildings.columns:
+        buildings["heat_annual_kwh"] = 0.0
+    if "heat_ecs_annual_kwh" not in buildings.columns:
+        buildings["heat_ecs_annual_kwh"] = buildings["heat_annual_kwh"]
+    if "maxpowerqhw" not in buildings.columns:
+        buildings["maxpowerqhw"] = 0.0
+    buildings = add_energy_intensity(buildings)
 
     results_dir = ensure_dir(RESULTS_DIR / "lab2")
     write_geojson(results_dir / "buildings_electricity.geojson", base_geojson, buildings)
@@ -156,7 +222,74 @@ def main() -> None:
     building_summary.to_csv(results_dir / "building_electricity_summary.csv", index=False)
 
     try:
-        import matplotlib.pyplot as plt
+        import geopandas as gpd
+    except ImportError:
+        gpd = None
+
+    if gpd is not None:
+        maps_dir = ensure_dir(results_dir / "maps")
+        buildings_gdf = gpd.read_file(results_dir / "buildings_electricity.geojson")
+        save_geopandas_maps(buildings_gdf, maps_dir)
+
+    try:
+        import plotly.express as px
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        energy_by_affect = (
+            buildings.groupby("affect")[["heat_annual_kwh", "elec_annual_kwh"]]
+            .sum()
+            .reset_index()
+            .fillna(0)
+        )
+        energy_by_affect["heat_mwh"] = energy_by_affect["heat_annual_kwh"] / 1000
+        energy_by_affect["elec_mwh"] = energy_by_affect["elec_annual_kwh"] / 1000
+
+        affect_long = energy_by_affect.melt(
+            id_vars="affect",
+            value_vars=["heat_mwh", "elec_mwh"],
+            var_name="energy_type",
+            value_name="mwh",
+        )
+        affect_long["energy_type"] = affect_long["energy_type"].map({"heat_mwh": "Chauffage", "elec_mwh": "Electricité"})
+        fig = px.bar(
+            affect_long,
+            x="affect",
+            y="mwh",
+            color="energy_type",
+            barmode="group",
+            title="Energie annuelle par affectation",
+            labels={"affect": "Affectation", "mwh": "Energie (MWh/an)", "energy_type": "Type"},
+        )
+        fig.update_layout(xaxis_tickangle=-30)
+        fig.write_html(results_dir / "energy_by_affectation.html", include_plotlyjs="cdn")
+
+        buildings["etat_label"] = buildings["etat"].fillna("Inconnu")
+        energy_by_etat = (
+            buildings.groupby("etat_label")[["heat_annual_kwh", "elec_annual_kwh"]]
+            .sum()
+            .reset_index()
+            .fillna(0)
+        )
+        energy_by_etat["heat_mwh"] = energy_by_etat["heat_annual_kwh"] / 1000
+        energy_by_etat["elec_mwh"] = energy_by_etat["elec_annual_kwh"] / 1000
+        etat_long = energy_by_etat.melt(
+            id_vars="etat_label",
+            value_vars=["heat_mwh", "elec_mwh"],
+            var_name="energy_type",
+            value_name="mwh",
+        )
+        etat_long["energy_type"] = etat_long["energy_type"].map({"heat_mwh": "Chauffage", "elec_mwh": "Electricité"})
+        fig = px.bar(
+            etat_long,
+            x="etat_label",
+            y="mwh",
+            color="energy_type",
+            barmode="group",
+            title="Energie annuelle par état",
+            labels={"etat_label": "Etat", "mwh": "Energie (MWh/an)", "energy_type": "Type"},
+        )
+        fig.write_html(results_dir / "energy_by_state.html", include_plotlyjs="cdn")
 
         admin_ids = buildings[(buildings["affect"] == "Administration") & (buildings["etat"] == "Nouveau")][
             "id_unique"
@@ -182,16 +315,39 @@ def main() -> None:
                 "summer": week_slice("2023-07-01"),
             }
 
-            fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-            for ax, (label, week) in zip(axes, weeks.items()):
-                ax.plot(week.index, week[admin_id], label=f"Administration ({label})")
-                ax.plot(week.index, week[industry_id], label=f"Industries ({label})")
-                ax.set_ylabel("kW")
-                ax.legend()
-            axes[-1].set_xlabel("Heure")
-            fig.tight_layout()
-            fig.savefig(results_dir / "typical_week_profiles.png", dpi=150)
-            plt.close(fig)
+            fig = make_subplots(
+                rows=3,
+                cols=1,
+                shared_xaxes=True,
+                subplot_titles=["Semaine d'hiver", "Semaine de mi-saison", "Semaine d'été"],
+            )
+            for idx, (label, week) in enumerate(weeks.items(), start=1):
+                show_legend = idx == 1
+                fig.add_trace(
+                    go.Scatter(
+                        x=week.index,
+                        y=week[admin_id],
+                        name=f"Administration ({label})",
+                        mode="lines",
+                        showlegend=show_legend,
+                    ),
+                    row=idx,
+                    col=1,
+                )
+                fig.add_trace(
+                    go.Scatter(
+                        x=week.index,
+                        y=week[industry_id],
+                        name=f"Industries ({label})",
+                        mode="lines",
+                        showlegend=show_legend,
+                    ),
+                    row=idx,
+                    col=1,
+                )
+                fig.update_yaxes(title_text="kW", row=idx, col=1)
+            fig.update_layout(height=900, title="Profils hebdomadaires typiques", hovermode="x unified")
+            fig.write_html(results_dir / "typical_week_profiles.html", include_plotlyjs="cdn")
     except ImportError:
         pass
 

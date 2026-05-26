@@ -115,26 +115,38 @@ def main() -> None:
     peaks.to_csv(results_dir / "building_peaks.csv", index=False)
 
     try:
-        import matplotlib.pyplot as plt
+        import plotly.express as px
 
-        fig, ax = plt.subplots(figsize=(8, 6))
-        pie_data.plot.pie(autopct="%1.1f%%", ax=ax)
-        ax.set_ylabel("")
-        ax.set_title("Répartition SRE par affectation")
-        fig.tight_layout()
-        fig.savefig(results_dir / "sre_by_affectation.png", dpi=150)
-        plt.close(fig)
+        fig = px.pie(
+            values=pie_data.values,
+            names=pie_data.index,
+            title="Répartition SRE par affectation",
+            hole=0.35,
+        )
+        fig.update_traces(textinfo="percent+label")
+        fig.update_layout(legend_title_text="Affectation")
+        fig.write_html(results_dir / "sre_by_affectation.html", include_plotlyjs="cdn")
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(district_profile["time"], district_profile["total_kw"], label="Total")
-        ax.plot(district_profile["time"], district_profile["heating_kw"], label="Chauffage", alpha=0.7)
-        ax.plot(district_profile["time"], district_profile["ecs_kw"], label="ECS", alpha=0.7)
-        ax.set_ylabel("Puissance (kW)")
-        ax.set_title("Profil horaire quartier")
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig(results_dir / "district_profile.png", dpi=150)
-        plt.close(fig)
+        profile_long = district_profile.melt(
+            id_vars="time",
+            value_vars=["total_kw", "heating_kw", "ecs_kw"],
+            var_name="type",
+            value_name="kw",
+        )
+        label_map = {"total_kw": "Total", "heating_kw": "Chauffage", "ecs_kw": "ECS"}
+        profile_long["type"] = profile_long["type"].map(label_map)
+
+        fig = px.line(
+            profile_long,
+            x="time",
+            y="kw",
+            color="type",
+            title="Profil horaire quartier",
+            labels={"kw": "Puissance (kW)", "time": "Heure", "type": "Charge"},
+        )
+        fig.update_layout(hovermode="x unified")
+        fig.update_xaxes(rangeslider_visible=True)
+        fig.write_html(results_dir / "district_profile.html", include_plotlyjs="cdn")
     except ImportError:
         pass
 
