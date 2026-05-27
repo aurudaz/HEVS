@@ -58,6 +58,10 @@ def main():
         p["heat_ecs_annual_kwh"] = round(heat, 1)
         p["elec_annual_kwh"] = round(elec, 1)
         p["pv_annual_kwh"] = round(float(p.get("pv_annual_kwh", 0) or 0), 1)
+        p["heat_peak_kw"] = round(float(p.get("heat_peak_kw", 0) or 0), 1)
+        p["heat_peak_kw_foisonnement"] = round(float(p.get("heat_peak_kw_foisonnement", 0) or 0), 1)
+        p["foisonnement"] = round(float(p.get("foisonnement", 0) or 0), 2)
+        p["inertie_thermique_h"] = round(float(p.get("inertie_thermique_h", 0) or 0), 1)
         p["maxpowerqhw"] = round(float(p.get("maxpowerqhw", 0) or 0), 1)
         p["autoconsumption"] = round(float(p.get("autoconsumption", 0) or 0) * 100, 1)
         p["autonomy"] = round(float(p.get("autonomy", 0) or 0) * 100, 1)
@@ -119,6 +123,102 @@ def main():
         elec_summary = json.load(f)
     with open(os.path.join(LAB3_RES, "network_summary.json"), "r") as f:
         thermal_summary = json.load(f)
+
+    # Summary metrics and SIA comparisons
+    df_numeric = df_builds.copy()
+    numeric_columns = [
+        "sre",
+        "heat_ecs_annual_kwh",
+        "elec_annual_kwh",
+        "pv_annual_kwh",
+        "heat_peak_kw",
+        "heat_peak_kw_foisonnement",
+        "foisonnement",
+        "inertie_thermique_h",
+    ]
+    for col in numeric_columns:
+        df_numeric[col] = pd.to_numeric(df_numeric.get(col, 0), errors="coerce").fillna(0)
+
+    df_numeric["heat_sre_ratio"] = df_numeric["heat_ecs_annual_kwh"] / df_numeric["sre"].replace(0, np.nan)
+    df_numeric["heat_sre_ratio"] = df_numeric["heat_sre_ratio"].fillna(0)
+    df_numeric["elec_sre_ratio"] = df_numeric["elec_annual_kwh"] / df_numeric["sre"].replace(0, np.nan)
+    df_numeric["elec_sre_ratio"] = df_numeric["elec_sre_ratio"].fillna(0)
+
+    total_sre = df_numeric["sre"].sum()
+    total_heat_kwh = df_numeric["heat_ecs_annual_kwh"].sum()
+    total_elec_kwh = df_numeric["elec_annual_kwh"].sum()
+    total_pv_kwh = df_numeric["pv_annual_kwh"].sum()
+
+    heat_per_sre = total_heat_kwh / total_sre if total_sre > 0 else 0.0
+    elec_per_sre = total_elec_kwh / total_sre if total_sre > 0 else 0.0
+
+    storage_capacity_kwh = float(elec_summary.get("storage_capacity_kwh_for_100pct_autoconsumption", 0))
+    battery_cost_chf_per_kwh = 150
+    battery_cost_chf = storage_capacity_kwh * battery_cost_chf_per_kwh
+    autoconsumption_with_battery = 1.0 if total_pv_kwh > 0 else 0.0
+    autonomy_with_battery = total_pv_kwh / total_elec_kwh if total_elec_kwh > 0 else 0.0
+    autonomy_with_battery = min(autonomy_with_battery, 1.0)
+
+    total_length_m = float(thermal_summary.get("total_length_m", 0))
+    network_cost_per_m = thermal_summary["total_cost_chf"] / total_length_m if total_length_m > 0 else 0.0
+
+    affect_summary = (
+        df_numeric.groupby("affect")[["sre", "heat_ecs_annual_kwh", "elec_annual_kwh"]]
+        .sum()
+        .reset_index()
+    )
+    affect_summary["heat_per_sre"] = affect_summary["heat_ecs_annual_kwh"] / affect_summary["sre"].replace(0, np.nan)
+    affect_summary["heat_per_sre"] = affect_summary["heat_per_sre"].fillna(0)
+    affect_summary["elec_per_sre"] = affect_summary["elec_annual_kwh"] / affect_summary["sre"].replace(0, np.nan)
+    affect_summary["elec_per_sre"] = affect_summary["elec_per_sre"].fillna(0)
+
+    heat_ranges = df_numeric.groupby("affect")["heat_sre_ratio"].agg(["min", "max"]).reset_index()
+    heat_range_map = {
+        row["affect"]: (row["min"], row["max"]) for _, row in heat_ranges.iterrows()
+    }
+
+    sia_elec_ranges = {
+        "Habitat collectif": "15–30",
+        "Administration": "60–100",
+        "Ecole": "40–60",
+        "Commerce": "80–140",
+        "Industries": "100–200",
+        "Installation sportive": "30–70",
+        "Non chauffé": "0–5",
+    }
+
+    def fmt_number(value: float, digits: int = 1) -> str:
+        return f"{value:,.{digits}f}".replace(",", " ")
+
+    comparison_rows = []
+    for _, row in affect_summary.sort_values("sre", ascending=False).iterrows():
+        affect = row["affect"]
+        heat_min, heat_max = heat_range_map.get(affect, (0.0, 0.0))
+        heat_range = f"{heat_min:.1f}–{heat_max:.1f}" if heat_max > 0 else "0"
+        comparison_rows.append(
+            {
+                "affect": affect,
+                "sre": fmt_number(row["sre"], 0),
+                "heat_per_sre": fmt_number(row["heat_per_sre"], 1),
+                "heat_range": heat_range,
+                "elec_per_sre": fmt_number(row["elec_per_sre"], 1),
+                "elec_range": sia_elec_ranges.get(affect, "—"),
+            }
+        )
+
+    comparison_rows_html = "\n".join(
+        [
+            "<tr>"
+            f"<td>{row['affect']}</td>"
+            f"<td>{row['sre']}</td>"
+            f"<td>{row['heat_per_sre']}</td>"
+            f"<td>{row['heat_range']}</td>"
+            f"<td>{row['elec_per_sre']}</td>"
+            f"<td>{row['elec_range']}</td>"
+            "</tr>"
+            for row in comparison_rows
+        ]
+    )
 
     # 6. Generate single HTML Dashboard
     html_content = f"""<!DOCTYPE html>
@@ -465,6 +565,74 @@ def main():
         .answer-section ul {{
             padding-left: 20px;
         }}
+
+        .summary-section {{
+            margin-bottom: 24px;
+        }}
+
+        .summary-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+        }}
+
+        .summary-card {{
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+        }}
+
+        .summary-card .label {{
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #718096;
+            margin-bottom: 4px;
+            display: block;
+        }}
+
+        .summary-card .value {{
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }}
+
+        .summary-card .subvalue {{
+            font-size: 0.85rem;
+            color: #4A5568;
+            margin-top: 4px;
+        }}
+
+        .summary-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }}
+
+        .summary-table th,
+        .summary-table td {{
+            border: 1px solid var(--border);
+            padding: 8px 10px;
+            text-align: left;
+        }}
+
+        .summary-table th {{
+            background: #EDF2F7;
+            font-weight: 600;
+        }}
+
+        .summary-table tbody tr:nth-child(even) {{
+            background: #F8FAFC;
+        }}
+
+        .summary-note {{
+            font-size: 0.85rem;
+            color: #4A5568;
+            margin-top: 8px;
+            line-height: 1.5;
+        }}
         
     </style>
 </head>
@@ -488,7 +656,7 @@ def main():
             <div class="metric-grid">
                 <div class="metric-card">
                     <span class="metric-title">Total SRE</span>
-                    <span class="metric-value">745.2k</span>
+                    <span class="metric-value">{total_sre / 1000:.1f}k</span>
                     <span class="metric-unit">m² SRE</span>
                 </div>
                 <div class="metric-card">
@@ -544,7 +712,10 @@ def main():
                         <option value="elec_annual_kwh">Annual Electricity Consumption (kWh)</option>
                         <option value="heat_sre_ratio">Specific Heat Demand (kWh/m² SRE)</option>
                         <option value="elec_sre_ratio">Specific Electricity Demand (kWh/m² SRE)</option>
-                        <option value="maxpowerqhw">Yearly Max Heating Power (kW)</option>
+                        <option value="heat_peak_kw">Peak Heating Power (No Foisonnement) [kW]</option>
+                        <option value="maxpowerqhw">Peak Heating Power (Foisonnement) [kW]</option>
+                        <option value="foisonnement">Foisonnement Factor (Heat)</option>
+                        <option value="inertie_thermique_h">Thermal Inertia (Hours)</option>
                         <option value="pv_annual_kwh">Annual PV Potential (kWh)</option>
                         <option value="autonomy">Electrical Autonomy Rate (%)</option>
                     </select>
@@ -566,10 +737,147 @@ def main():
         <!-- Right Content Panels -->
         <div class="content-area">
             <div class="nav-tabs">
+                <button class="nav-tab" data-panel="resume-panel">Résumé & KPI</button>
                 <button class="nav-tab active" data-panel="gis-panel">District GIS Map</button>
                 <button class="nav-tab" data-panel="energy-panel">Energy Demands Analysis</button>
                 <button class="nav-tab" data-panel="load-panel">Load Curves & Schedules</button>
                 <button class="nav-tab" data-panel="reports-panel">Lab Report & Answers</button>
+            </div>
+
+            <!-- Résumé Panel -->
+            <div id="resume-panel" class="tab-panel">
+                <div class="scrollable-content">
+                    <div class="summary-section">
+                        <h2>Résumé énergétique du district</h2>
+                        <div class="summary-grid">
+                            <div class="summary-card">
+                                <span class="label">Besoin chaleur annuel</span>
+                                <span class="value">{total_heat_kwh / 1e6:.2f} GWh</span>
+                                <span class="subvalue">{heat_per_sre:.1f} kWh/m² SRE</span>
+                            </div>
+                            <div class="summary-card">
+                                <span class="label">Besoin électrique annuel</span>
+                                <span class="value">{total_elec_kwh / 1e6:.2f} GWh</span>
+                                <span class="subvalue">{elec_per_sre:.1f} kWh/m² SRE</span>
+                            </div>
+                            <div class="summary-card">
+                                <span class="label">Production solaire annuelle</span>
+                                <span class="value">{total_pv_kwh / 1e6:.2f} GWh</span>
+                                <span class="subvalue">PV toiture totale</span>
+                            </div>
+                            <div class="summary-card">
+                                <span class="label">SRE totale</span>
+                                <span class="value">{total_sre:,.0f} m²</span>
+                                <span class="subvalue">Surface de Référence Énergétique</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="summary-section">
+                        <h3>Autoconsommation & Autarcie (district)</h3>
+                        <table class="summary-table">
+                            <thead>
+                                <tr>
+                                    <th>Scénario</th>
+                                    <th>Autoconsommation</th>
+                                    <th>Autarcie</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Sans batterie (profil horaire)</td>
+                                    <td>{elec_summary["district_autoconsumption"] * 100:.1f}%</td>
+                                    <td>{elec_summary["district_autonomy"] * 100:.1f}%</td>
+                                </tr>
+                                <tr>
+                                    <td>Avec batterie (100% autoconsommation)</td>
+                                    <td>{autoconsumption_with_battery * 100:.0f}%</td>
+                                    <td>{autonomy_with_battery * 100:.1f}%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="summary-note">L’autarcie maximale est limitée par la production PV annuelle (même avec un stockage parfait).</p>
+                    </div>
+
+                    <div class="summary-section">
+                        <h3>Stockage électrique (batteries)</h3>
+                        <table class="summary-table">
+                            <tbody>
+                                <tr>
+                                    <td>Capacité requise pour 100% autoconsommation</td>
+                                    <td>{storage_capacity_kwh / 1e6:.2f} GWh</td>
+                                </tr>
+                                <tr>
+                                    <td>Coût unitaire retenu</td>
+                                    <td>{battery_cost_chf_per_kwh:.0f} CHF/kWh</td>
+                                </tr>
+                                <tr>
+                                    <td>Coût total estimé</td>
+                                    <td>{battery_cost_chf / 1e6:.1f} M CHF</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="summary-note">Le coût du stockage est indicatif et dépend fortement de la technologie et du dimensionnement (échelle GWh).</p>
+                    </div>
+
+                    <div class="summary-section">
+                        <h3>Réseau de chaleur</h3>
+                        <table class="summary-table">
+                            <tbody>
+                                <tr>
+                                    <td>Longueur totale du réseau</td>
+                                    <td>{thermal_summary["total_length_km"]:.2f} km</td>
+                                </tr>
+                                <tr>
+                                    <td>Coût d'investissement total</td>
+                                    <td>{thermal_summary["total_cost_chf"] / 1e6:.2f} M CHF</td>
+                                </tr>
+                                <tr>
+                                    <td>Coût linéaire moyen</td>
+                                    <td>{network_cost_per_m:.0f} CHF/m</td>
+                                </tr>
+                                <tr>
+                                    <td>Densité énergétique linéaire</td>
+                                    <td>{thermal_summary["energy_density_mwh_per_m_per_year"]:.2f} MWh/m/an</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="summary-section">
+                        <h3>Comparaison SIA (énergie spécifique par affectation)</h3>
+                        <table class="summary-table">
+                            <thead>
+                                <tr>
+                                    <th>Affectation</th>
+                                    <th>SRE [m²]</th>
+                                    <th>Chaleur modèle [kWh/m²]</th>
+                                    <th>SIA 380/1 (plage) [kWh/m²]</th>
+                                    <th>Élec modèle [kWh/m²]</th>
+                                    <th>SIA 2024 / 380/4 (plage) [kWh/m²]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {comparison_rows_html}
+                            </tbody>
+                        </table>
+                        <p class="summary-note">
+                            Les plages SIA 380/1 reflètent les valeurs normatives (chauffage + ECS) utilisées dans le modèle selon
+                            les normes historiques et les facteurs d’enveloppe. Les plages électriques sont issues des intensités
+                            typiques publiées dans SIA 2024 et SIA 380/4 pour des bâtiments de performance courante.
+                        </p>
+                    </div>
+
+                    <div class="summary-section">
+                        <h3>Références (SIA & données officielles)</h3>
+                        <ul class="summary-note">
+                            <li>SIA 380/1 – Besoins de chaleur pour le chauffage et l’ECS.</li>
+                            <li>SIA 2024 – Données d’exploitation et profils horaires.</li>
+                            <li>SIA 380/4 – Énergie électrique dans les bâtiments.</li>
+                            <li>Office fédéral de l’énergie (OFEN/SFOE) – seuils de densité énergétique pour réseaux de chaleur.</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
 
             <!-- GIS Panel -->
@@ -841,6 +1149,8 @@ def main():
                             if (attribute.includes('elec')) cmap = 'blues';
                             if (attribute.includes('ratio')) cmap = 'magma';
                             if (attribute === 'autonomy') cmap = 'greenred';
+                            if (attribute === 'foisonnement') cmap = 'greenred';
+                            if (attribute === 'inertie_thermique_h') cmap = 'blues';
                             fillCol = getColorScale(numVal, minVal, maxVal, cmap);
                         }}
                     }}
@@ -865,7 +1175,10 @@ def main():
                                 <tr><td><b>Annual Elec:</b></td><td>${{p.elec_annual_kwh}} kWh</td></tr>
                                 <tr><td><b>Heat/SRE ratio:</b></td><td>${{p.heat_sre_ratio}} kWh/m²</td></tr>
                                 <tr><td><b>Elec/SRE ratio:</b></td><td>${{p.elec_sre_ratio}} kWh/m²</td></tr>
-                                <tr><td><b>Max Heat Power:</b></td><td>${{p.maxpowerqhw}} kW</td></tr>
+                                <tr><td><b>Peak Heat (No Foisonnement):</b></td><td>${{p.heat_peak_kw}} kW</td></tr>
+                                <tr><td><b>Peak Heat (Foisonné):</b></td><td>${{p.heat_peak_kw_foisonnement}} kW</td></tr>
+                                <tr><td><b>Foisonnement:</b></td><td>${{p.foisonnement}}</td></tr>
+                                <tr><td><b>Thermal Inertia:</b></td><td>${{p.inertie_thermique_h}} h</td></tr>
                                 <tr><td><b>PV Generation:</b></td><td>${{p.pv_annual_kwh}} kWh</td></tr>
                                 <tr><td><b>Autonomy / SC:</b></td><td>${{p.autonomy}}% / ${{p.autoconsumption}}%</td></tr>
                             </table>
@@ -897,7 +1210,10 @@ def main():
                     if (attribute === 'elec_annual_kwh') {{ title = \"Elec Demand\"; unit = \" kWh\"; cmap = 'blues'; }}
                     if (attribute === 'heat_sre_ratio') {{ title = \"Specific Heat\"; unit = \" kWh/m²\"; cmap = 'magma'; }}
                     if (attribute === 'elec_sre_ratio') {{ title = \"Specific Elec\"; unit = \" kWh/m²\"; cmap = 'magma'; }}
-                    if (attribute === 'maxpowerqhw') {{ title = \"Max Heat Power\"; unit = \" kW\"; }}
+                    if (attribute === 'heat_peak_kw') {{ title = \"Peak Heat (No Foisonn.)\"; unit = \" kW\"; }}
+                    if (attribute === 'maxpowerqhw') {{ title = \"Peak Heat (Foisonné)\"; unit = \" kW\"; }}
+                    if (attribute === 'foisonnement') {{ title = \"Foisonnement\"; unit = \"\"; cmap = 'greenred'; }}
+                    if (attribute === 'inertie_thermique_h') {{ title = \"Thermal Inertia\"; unit = \" h\"; cmap = 'blues'; }}
                     if (attribute === 'pv_annual_kwh') {{ title = \"PV Generation\"; unit = \" kWh\"; }}
                     if (attribute === 'autonomy') {{ title = \"Elec Autonomy\"; unit = \"%\"; cmap = 'greenred'; }}
                     
@@ -905,7 +1221,13 @@ def main():
                     const steps = 5;
                     for (let i = 0; i <= steps; i++) {{
                         const val = minVal + (maxVal - minVal) * (i / steps);
-                        const displayVal = attribute === 'autonomy' ? val.toFixed(1) : Math.round(val);
+                        const displayVal = attribute === 'autonomy'
+                            ? val.toFixed(1)
+                            : attribute === 'foisonnement'
+                                ? val.toFixed(2)
+                                : attribute === 'inertie_thermique_h'
+                                    ? val.toFixed(1)
+                                    : Math.round(val);
                         const color = getColorScale(val, minVal, maxVal, cmap);
                         div.innerHTML += \`<div class=\"legend-item\"><div class=\"legend-color\" style=\"background:\${{color}};\"></div>\${{displayVal}}\${{unit}}</div>\`;
                     }}
@@ -923,7 +1245,7 @@ def main():
             
             if (!document.getElementById('toggle-network-check').checked) return;
 
-            networkLayer = L.geoJSON(networkEdgesGeoJSON, {{
+            networkLayer = L.geoJSON(networkGeoJSON, {{
                 style: function(feature) {{
                     const d = feature.properties.diameter_mm || 25;
                     let color = '#2980B9'; // street piping (DHN)

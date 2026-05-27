@@ -82,6 +82,18 @@ def generate_geopandas_maps():
             "filename": "map_max_power.png"
         },
         {
+            "column": "foisonnement",
+            "title": "Foisonnement Factor (Heat Demand)",
+            "cmap": "RdYlGn",
+            "filename": "map_foisonnement.png"
+        },
+        {
+            "column": "inertie_thermique_h",
+            "title": "Thermal Inertia (Hours)",
+            "cmap": "Blues",
+            "filename": "map_inertia.png"
+        },
+        {
             "column": "heat_sre_ratio",
             "title": "Specific Heating Demand [kWh/m² SRE]",
             "cmap": "magma",
