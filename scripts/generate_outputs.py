@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import csv
 import json
 import textwrap
@@ -18,7 +19,8 @@ OUTPUT_DASHBOARD = ROOT_DIR / "dashboard.html"
 OUTPUT_REPORT_MD = ROOT_DIR / "report.md"
 OUTPUT_REPORT_PDF = ROOT_DIR / "report.pdf"
 
-FLOW_FACTOR = 3600 / (4.18 * 30)
+DELTA_T_C = 30
+FLOW_FACTOR = 3600 / (4.18 * DELTA_T_C)
 
 
 @dataclass
@@ -57,6 +59,32 @@ def to_float(value: object) -> float:
 def format_number(value: float, decimals: int = 0) -> str:
     formatted = f"{value:,.{decimals}f}"
     return formatted.replace(",", " ")
+
+
+def dump_json_for_script(data: dict) -> str:
+    return json.dumps(data).replace("</", "<\\/")
+
+
+def load_edge_flows() -> dict[tuple[str, str], float]:
+    flows: dict[tuple[str, str], float] = {}
+    for row in read_csv(LAB3_DIR / "edge_flows.csv"):
+        edge_value = row.get("edge")
+        if not edge_value:
+            continue
+        try:
+            edge = ast.literal_eval(edge_value)
+        except (ValueError, SyntaxError):
+            continue
+        if isinstance(edge, (list, tuple)) and len(edge) == 2:
+            flows[(str(edge[0]), str(edge[1]))] = to_float(row.get("mass_flow_kg_h"))
+    return flows
+
+
+def load_resources_geojson() -> dict:
+    path = ROOT_DIR / "Laboratoire Ronquoz - 3" / "resources_ronquoz.geojson"
+    if path.exists():
+        return json.loads(path.read_text())
+    return {"type": "FeatureCollection", "features": []}
 
 
 def summarize() -> Summary:
@@ -405,11 +433,27 @@ def build_dashboard(summary: Summary) -> str:
 
     def json_for_script(path: Path) -> str:
         data = json.loads(path.read_text())
-        return json.dumps(data).replace("</", "<\\/")
+        return dump_json_for_script(data)
 
     buildings_heat = json_for_script(LAB1_DIR / "buildings_energy.geojson")
     buildings_elec = json_for_script(LAB2_DIR / "buildings_electricity.geojson")
-    network_edges = json_for_script(LAB3_DIR / "network_edges.geojson")
+    network_edges_data = json.loads((LAB3_DIR / "network_edges.geojson").read_text())
+    edge_flows = load_edge_flows()
+    for feature in network_edges_data.get("features", []):
+        props = feature.setdefault("properties", {})
+        node_a = props.get("A") or props.get("level_0")
+        node_b = props.get("B") or props.get("level_1")
+        flow = 0.0
+        if node_a is not None and node_b is not None:
+            edge_key = (str(node_a), str(node_b))
+            flow = edge_flows.get(edge_key)
+            if flow is None:
+                flow = edge_flows.get((edge_key[1], edge_key[0]), 0.0)
+        props["mass_flow_kg_h"] = flow
+        props["power_kw"] = flow / FLOW_FACTOR if flow else 0.0
+        props["delta_t_c"] = DELTA_T_C
+    network_edges = dump_json_for_script(network_edges_data)
+    resources = dump_json_for_script(load_resources_geojson())
 
     cards = [
         ("Buildings", f"{summary.building_count}"),
@@ -479,7 +523,7 @@ def build_dashboard(summary: Summary) -> str:
       </div>
     </div>
     <div style=\"margin-top:16px\">
-      <h3>Labo 3 – Optimized network edges (diameter)</h3>
+      <h3>Labo 3 – Full heat network (diameter, power, temperatures)</h3>
       <div id=\"map-network\" class=\"map\"></div>
     </div>
   </section>
@@ -540,6 +584,7 @@ def build_dashboard(summary: Summary) -> str:
   const buildingsHeat = {buildings_heat};
   const buildingsElec = {buildings_elec};
   const networkEdges = {network_edges};
+const resources = {resources};
 
   function getNumericValues(geojson, key) {{
     return geojson.features
@@ -552,6 +597,49 @@ def build_dashboard(summary: Summary) -> str:
     const colors = ['#eff3ff', '#bdd7e7', '#6baed6', '#3182bd', '#08519c'];
     const index = Math.max(0, Math.min(colors.length - 1, Math.floor(ratio * (colors.length - 1))));
     return colors[index];
+  }}
+
+  function formatNumber(value, decimals = 0) {{
+    const number = Number(value);
+    if (Number.isNaN(number)) {{
+      return '0';
+    }}
+    return number.toFixed(decimals);
+  }}
+
+  function addResources(map, geojson) {{
+    if (!geojson || !geojson.features || geojson.features.length === 0) {{
+      return null;
+    }}
+    const layer = L.geoJSON(geojson, {{
+      pointToLayer: (feature, latlng) =>
+        L.circleMarker(latlng, {{
+          radius: 6,
+          color: '#1b3b5f',
+          weight: 2,
+          fillColor: '#1b3b5f',
+          fillOpacity: 0.9
+        }}),
+      onEachFeature: (feature, layer) => {{
+        const props = feature.properties || {{}};
+        const name = props.name || props.id || 'Resource';
+        const maxPower = Number(props.max_power_kw) || 0;
+        const minPower = Number(props.min_power_kw) || 0;
+        const supply = props.t_supply;
+        const deltaT = props.delta_t;
+        const network = props.reseau || '';
+        const lines = [
+          `<strong>${{name}}</strong>`,
+          network ? `Network: ${{network}}` : null,
+          `Max power: ${{formatNumber(maxPower, 0)}} kW`,
+          minPower ? `Min power: ${{formatNumber(minPower, 0)}} kW` : null,
+          Number.isFinite(supply) ? `Supply: ${{formatNumber(supply, 0)}} °C` : null,
+          Number.isFinite(deltaT) ? `ΔT: ${{formatNumber(deltaT, 0)}} °C` : null
+        ].filter(Boolean);
+        layer.bindTooltip(lines.join('<br>'));
+      }}
+    }}).addTo(map);
+    return layer;
   }}
 
   function createChoropleth(mapId, geojson, valueKey, label) {{
@@ -585,7 +673,7 @@ def build_dashboard(summary: Summary) -> str:
     map.fitBounds(layer.getBounds(), {{ padding: [10, 10] }});
   }}
 
-  function createNetworkMap(mapId, geojson) {{
+  function createNetworkMap(mapId, geojson, resourceGeojson) {{
     const map = L.map(mapId);
     L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
       maxZoom: 19,
@@ -602,17 +690,31 @@ def build_dashboard(summary: Summary) -> str:
         }};
       }},
       onEachFeature: (feature, layer) => {{
-        const diameter = Number(feature.properties?.diameter_mm) || 0;
-        layer.bindTooltip(`Diameter: ${{diameter.toFixed(0)}} mm`);
+        const props = feature.properties || {{}};
+        const diameter = Number(props.diameter_mm) || 0;
+        const flow = Number(props.mass_flow_kg_h) || 0;
+        const power = Number(props.power_kw) || 0;
+        const deltaT = Number(props.delta_t_c) || 0;
+        const edgeLabel = props.A && props.B ? `${{props.A}} → ${{props.B}}` : 'Network edge';
+        const lines = [
+          `<strong>${{edgeLabel}}</strong>`,
+          `Diameter: ${{formatNumber(diameter, 0)}} mm`,
+          `Flow: ${{formatNumber(flow, 0)}} kg/h`,
+          `Power: ${{formatNumber(power, 1)}} kW`,
+          `ΔT (model): ${{formatNumber(deltaT, 0)}} °C`
+        ];
+        layer.bindTooltip(lines.join('<br>'));
       }}
     }}).addTo(map);
 
-    map.fitBounds(layer.getBounds(), {{ padding: [10, 10] }});
+    const resourceLayer = addResources(map, resourceGeojson);
+    const boundsLayer = resourceLayer ? L.featureGroup([layer, resourceLayer]) : layer;
+    map.fitBounds(boundsLayer.getBounds(), {{ padding: [10, 10] }});
   }}
 
   createChoropleth('map-heat', buildingsHeat, 'heat_ecs_annual_kwh', 'Annual heat + ECS (kWh)');
   createChoropleth('map-elec', buildingsElec, 'elec_annual_kwh', 'Annual electricity (kWh)');
-  createNetworkMap('map-network', networkEdges);
+  createNetworkMap('map-network', networkEdges, resources);
 </script>
 </body>
 </html>"""
