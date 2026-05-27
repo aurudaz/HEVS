@@ -1,0 +1,11 @@
+{
+"type": "FeatureCollection",
+"name": "resources_ronquoz",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::2056" } },
+"features": [
+{ "type": "Feature", "properties": { "id": 0, "name": "nappe", "max_power_kw": 2000, "t_supply": 12, "delta_t": 3, "min_power_kw": 1000, "reseau": "AN" }, "geometry": { "type": "Point", "coordinates": [ 2593066.364485117606819, 1119031.341364197898656 ] } },
+{ "type": "Feature", "properties": { "id": 1, "name": "rhone", "max_power_kw": 21000, "t_supply": 12, "delta_t": 3, "min_power_kw": 7000, "reseau": "AN" }, "geometry": { "type": "Point", "coordinates": [ 2594183.989173439331353, 1119124.294470045249909 ] } },
+{ "type": "Feature", "properties": { "id": 2, "name": "cad", "max_power_kw": 10000, "t_supply": 75, "delta_t": 25, "min_power_kw": 0, "reseau": "CAD" }, "geometry": { "type": "Point", "coordinates": [ 2594613.920123066287488, 1119706.429928874596953 ] } },
+{ "type": "Feature", "properties": { "id": 3, "name": "nappe_ste_marguerite", "max_power_kw": 2000, "t_supply": 12, "delta_t": 3, "min_power_kw": 1000, "reseau": "AN" }, "geometry": { "type": "Point", "coordinates": [ 2594440.249713707249612, 1119398.585023778723553 ] } }
+]
+}
