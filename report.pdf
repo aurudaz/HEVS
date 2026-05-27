@@ -1,0 +1,219 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [ 5 0 R 7 0 R ] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 2621 >>
+stream
+BT
+/F1 11 Tf
+72 770 Td
+(Ronquoz district energy report) Tj
+0 -14 Td
+(Generated: 2026-05-27 11:03 UTC) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Executive summary) Tj
+0 -14 Td
+(- Buildings analysed: 196) Tj
+0 -14 Td
+(- Total SRE: 744 731 m2) Tj
+0 -14 Td
+(- Annual heat + ECS: 26 147.8 MWh/an) Tj
+0 -14 Td
+(- Peak heat demand \(hourly\): 9 259 kW) Tj
+0 -14 Td
+(- Diversified peak \(foisonnement\): 7 222 kW) Tj
+0 -14 Td
+(- Annual district electricity load: 23 371.9 MWh/an) Tj
+0 -14 Td
+(- Annual PV production: 19 318.9 MWh/an) Tj
+0 -14 Td
+(- Network length: 14.77 km) Tj
+0 -14 Td
+(- Network CAPEX: 16 736 196 CHF) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Labo 1 - Thermal demand characterization) Tj
+0 -14 Td
+(The heating and ECS demand is derived from SIA 380/1 tables, the building SRE) Tj
+0 -14 Td
+(and envelope factors. An hourly profile is built with the MeteoSuisse temperature) Tj
+0 -14 Td
+(series and a simplified ECS schedule \(08:00-20:00\). Thermal inertia and) Tj
+0 -14 Td
+(foisonnement factors are applied to approximate diversity between buildings.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Key outputs:) Tj
+0 -14 Td
+(- Annual heating: 17 905.3 MWh/an) Tj
+0 -14 Td
+(- Annual ECS: 8 242.5 MWh/an) Tj
+0 -14 Td
+(- Annual total heat: 26 147.8 MWh/an) Tj
+0 -14 Td
+(- Peak heat demand \(hourly\): 9 259 kW) Tj
+0 -14 Td
+(- Peak demand with foisonnement: 7 222 kW) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Labo 2 - Electricity and PV self-consumption) Tj
+0 -14 Td
+(Electricity loads are read from the consumption workbook. PV production is) Tj
+0 -14 Td
+(modelled with PVGIS profiles for east/west orientations and installed surface.) Tj
+0 -14 Td
+(Autoconsumption and autonomy are computed on an hourly basis.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Key outputs:) Tj
+0 -14 Td
+(- Annual electricity load: 23 371.9 MWh/an) Tj
+0 -14 Td
+(- Annual PV production: 19 318.9 MWh/an) Tj
+0 -14 Td
+(- Autoconsumption: 76.5%) Tj
+0 -14 Td
+(- Autonomy: 63.3%) Tj
+0 -14 Td
+(- Storage capacity for 100% autoconsumption: 4 052.6 MWh) Tj
+0 -14 Td
+(- Peak load: 5 381 kW) Tj
+0 -14 Td
+(- Peak PV: 5 585 kW) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Labo 3 - District heating network optimization \(focus\)) Tj
+0 -14 Td
+(The optimization uses the road network as the backbone and connects buildings) Tj
+0 -14 Td
+(and resources to the nearest street edge. Each pipe segment is assigned a) Tj
+0 -14 Td
+(diameter from a discrete catalogue and sized to carry the required mass flow) Tj
+0 -14 Td
+(at Delta T = 30C. The objective is to minimize a linearized CAPEX function) Tj
+0 -14 Td
+(based on diameter and length. The heat demand is taken from the Labo 1) Tj
+0 -14 Td
+(peak power \(after foisonnement\).) Tj
+0 -14 Td
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+6 0 obj
+<< /Length 2190 >>
+stream
+BT
+/F1 11 Tf
+72 770 Td
+() Tj
+0 -14 Td
+(Key outputs:) Tj
+0 -14 Td
+(- Network length: 14.77 km) Tj
+0 -14 Td
+(- CAPEX \(pipes only\): 16 736 196 CHF) Tj
+0 -14 Td
+(- Annual heat served: 26 147.8 MWh/an) Tj
+0 -14 Td
+(- Energy density: 1 770.3 MWh/km/an) Tj
+0 -14 Td
+(- Peak heat demand \(hourly\): 9 259 kW) Tj
+0 -14 Td
+(- Smoothed peak \(8h rolling\): 8 752 kW) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Supply dispatch \(optimized\):) Tj
+0 -14 Td
+(- rhone: 4 161.1 kW \(119 457 kg/h\)) Tj
+0 -14 Td
+(- nappe: 2 000.0 kW \(57 416 kg/h\)) Tj
+0 -14 Td
+(- nappe_ste_marguerite: 713.6 kW \(20 485 kg/h\)) Tj
+0 -14 Td
+(- cad: 347.6 kW \(9 980 kg/h\)) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Limitations and why the sizing can be too large:) Tj
+0 -14 Td
+(- Peak-based sizing: the network is sized to the hourly peak demand. Short peaks) Tj
+0 -14 Td
+(  drive large diameters even when the energy-weighted demand is lower. The) Tj
+0 -14 Td
+(  8-hour smoothed peak is about 8 752 kW) Tj
+0 -14 Td
+(  versus 9 259 kW instantaneous.) Tj
+0 -14 Td
+(- No temporal diversity inside the optimization: foisonnement is applied once) Tj
+0 -14 Td
+(  to building peaks, but the optimization still assumes the full diversified) Tj
+0 -14 Td
+(  peak occurs simultaneously on every branch.) Tj
+0 -14 Td
+(- No thermal losses or return temperature constraints: heat losses, pump) Tj
+0 -14 Td
+(  constraints, and operational limits are not modelled, so margins are implicitly) Tj
+0 -14 Td
+(  absorbed by pipe sizing rather than control strategies.) Tj
+0 -14 Td
+(- Static resource dispatch: resources are constrained only by max power,) Tj
+0 -14 Td
+(  with no cost hierarchy, startup limits, or seasonal availability.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Suggested next steps:) Tj
+0 -14 Td
+(- Re-size pipes based on a design percentile \(e.g., 95th\) or use the 8-hour) Tj
+0 -14 Td
+(  smoothed peak as the reference.) Tj
+0 -14 Td
+(- Add pipe heat losses, pumping power, and velocity constraints to avoid) Tj
+0 -14 Td
+(  overly large diameters.) Tj
+0 -14 Td
+(- Validate demand with measured profiles and update foisonnement per) Tj
+0 -14 Td
+(  affectation.) Tj
+0 -14 Td
+(- Evaluate staged deployment to prioritize high energy density corridors.) Tj
+0 -14 Td
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000123 00000 n 
+0000000193 00000 n 
+0000002866 00000 n 
+0000002992 00000 n 
+0000005234 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+5360
+%%EOF
